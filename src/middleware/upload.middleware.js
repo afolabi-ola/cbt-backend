@@ -1,5 +1,6 @@
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 
 // Configure multer for handling file uploads
 const storage = multer.diskStorage({
@@ -27,5 +28,62 @@ const upload = multer({
     fileSize: 1024 * 1024 * 5, // Limit file size to 5MB
   },
 });
+
+/**
+ * Generic single file upload with configurable destination and limits
+ * @param {string} fieldName - The form field name
+ * @param {Object} options - Configuration options
+ * @returns {Function} Multer middleware function
+ */
+export const uploadSingle = (fieldName, options = {}) => {
+  const {
+    destination = "uploads/",
+    maxSize = 1024 * 1024 * 100, // Default 100MB for backups
+    allowedTypes = [], // Empty array means allow all types
+  } = options;
+
+  // Ensure destination directory exists
+  if (!fs.existsSync(destination)) {
+    fs.mkdirSync(destination, { recursive: true });
+  }
+
+  const customStorage = multer.diskStorage({
+    destination: function (req, file, cb) {
+      cb(null, destination);
+    },
+    filename: function (req, file, cb) {
+      const timestamp = Date.now();
+      const ext = path.extname(file.originalname);
+      const name = path.basename(file.originalname, ext);
+      cb(null, `${name}-${timestamp}${ext}`);
+    },
+  });
+
+  const customFileFilter =
+    allowedTypes.length > 0
+      ? (req, file, cb) => {
+          if (allowedTypes.includes(file.mimetype)) {
+            cb(null, true);
+          } else {
+            cb(
+              new Error(
+                `Only ${allowedTypes.join(", ")} files are allowed`
+              ),
+              false
+            );
+          }
+        }
+      : (req, file, cb) => cb(null, true);
+
+  const multerInstance = multer({
+    storage: customStorage,
+    fileFilter: customFileFilter,
+    limits: {
+      fileSize: maxSize,
+    },
+  });
+
+  return multerInstance.single(fieldName);
+};
 
 export default upload;

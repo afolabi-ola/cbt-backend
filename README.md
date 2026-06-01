@@ -26,6 +26,7 @@ A robust backend system for managing computer-based tests, built with Express.js
   - [Students](#students)
   - [Notifications](#notification-api)
   - [System Settings](#system-settings-api)
+  - [Backup and Restore](#backup-and-restore-api)
   - [Controller Exports](#controller-exports-summary)
 - [Error Handling](#error-handling)
 
@@ -2515,6 +2516,231 @@ Content-Type: application/json
   "message": "You are not authorized to perform this action"
 }
 ```
+
+### Backup and Restore API
+
+Database backup and restore functionality for PostgreSQL. All endpoints require admin authentication.
+
+#### Create Database Backup
+
+```http
+POST /api/backup-restore/backup
+```
+
+**Auth:** Required (Bearer token)  
+**Roles:** ADMIN only
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Backup created successfully",
+  "filename": "backup_2026-06-01T12-30-45-123Z.sql",
+  "path": "/path/to/backup/backup_2026-06-01T12-30-45-123Z.sql"
+}
+```
+
+#### List All Backups
+
+```http
+GET /api/backup-restore/list
+```
+
+**Auth:** Required (Bearer token)  
+**Roles:** ADMIN only
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "backups": [
+    {
+      "filename": "backup_2026-06-01T12-30-45-123Z.sql",
+      "size": 15728640,
+      "createdAt": "2026-06-01T12:30:45.123Z"
+    },
+    {
+      "filename": "backup_2026-06-01T11-15-30-456Z.sql",
+      "size": 15728640,
+      "createdAt": "2026-06-01T11:15:30.456Z"
+    }
+  ]
+}
+```
+
+#### Download Backup File
+
+```http
+GET /api/backup-restore/download/:filename
+```
+
+**Auth:** Required (Bearer token)  
+**Roles:** ADMIN only
+
+**Params:**
+
+- `filename` (string, required) - The backup filename
+
+**Response:** Binary file download
+
+**Example cURL:**
+
+```bash
+curl -H "Authorization: Bearer <token>" \
+  -o backup.sql \
+  http://localhost:5000/api/backup-restore/download/backup_2026-06-01T12-30-45-123Z.sql
+```
+
+#### Restore from Uploaded Backup File
+
+```http
+POST /api/backup-restore/restore
+```
+
+**Auth:** Required (Bearer token)  
+**Roles:** ADMIN only
+
+**Request Headers:**
+
+```
+Content-Type: multipart/form-data
+```
+
+**Body:**
+
+- `backup` (file, required) - The backup file to restore
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Database restored successfully from backup"
+}
+```
+
+**Example cURL:**
+
+```bash
+curl -X POST -H "Authorization: Bearer <token>" \
+  -F "backup=@backup_2026-06-01T12-30-45-123Z.sql" \
+  http://localhost:5000/api/backup-restore/restore
+```
+
+#### Restore from Existing Backup File (No Re-upload)
+
+```http
+POST /api/backup-restore/restore-from-file
+```
+
+**Auth:** Required (Bearer token)  
+**Roles:** ADMIN only
+
+**Request Headers:**
+
+```
+Content-Type: application/json
+```
+
+**Body:**
+
+```json
+{
+  "filename": "backup_2026-06-01T12-30-45-123Z.sql"
+}
+```
+
+**Validation Rules:**
+
+- `filename` (string, required) - Must match pattern `backup_*.sql`
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Database restored successfully from backup",
+  "filename": "backup_2026-06-01T12-30-45-123Z.sql"
+}
+```
+
+**Example cURL:**
+
+```bash
+curl -X POST -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{"filename": "backup_2026-06-01T12-30-45-123Z.sql"}' \
+  http://localhost:5000/api/backup-restore/restore-from-file
+```
+
+#### Delete Backup File
+
+```http
+DELETE /api/backup-restore/:filename
+```
+
+**Auth:** Required (Bearer token)  
+**Roles:** ADMIN only
+
+**Params:**
+
+- `filename` (string, required) - The backup filename
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Backup deleted successfully"
+}
+```
+
+**Example cURL:**
+
+```bash
+curl -X DELETE -H "Authorization: Bearer <token>" \
+  http://localhost:5000/api/backup-restore/backup_2026-06-01T12-30-45-123Z.sql
+```
+
+### System Requirements for Backup/Restore
+
+- PostgreSQL client tools must be installed on the server: `pg_dump` and `pg_restore`
+- `DATABASE_URL` environment variable must be properly configured
+- `backups/` directory is automatically created for storing backup files
+
+#### PostgreSQL Client Tools Configuration
+
+If you get an error like `'pg_dump' is not recognized as an internal or external command`, configure the PostgreSQL binary paths using one of these methods:
+
+**Option 1: Add PostgreSQL to System PATH (Recommended)**
+
+Add the PostgreSQL bin directory to your system PATH:
+- Windows: Add `C:\Program Files\PostgreSQL\16\bin` to your PATH environment variable
+- Linux/macOS: PostgreSQL tools are usually already in PATH
+
+**Option 2: Set Environment Variables**
+
+Configure these environment variables in your `.env` file:
+
+```bash
+# Specify full paths to PostgreSQL tools
+PG_DUMP_PATH=C:\Program Files\PostgreSQL\16\bin\pg_dump.exe
+PG_RESTORE_PATH=C:\Program Files\PostgreSQL\16\bin\pg_restore.exe
+```
+
+**Option 3: Automatic Detection (Windows)**
+
+The system automatically checks common PostgreSQL installation paths:
+- `C:\Program Files\PostgreSQL\16\bin\pg_dump.exe`
+- `C:\Program Files\PostgreSQL\15\bin\pg_dump.exe`
+- `C:\Program Files\PostgreSQL\14\bin\pg_dump.exe`
+- `C:\Program Files (x86)\PostgreSQL\16\bin\pg_dump.exe`
+- `C:\Program Files (x86)\PostgreSQL\15\bin\pg_dump.exe`
+- `C:\Program Files (x86)\PostgreSQL\14\bin\pg_dump.exe`
+
+If found, it will use the first available version automatically.
 
 ### Error Handling
 

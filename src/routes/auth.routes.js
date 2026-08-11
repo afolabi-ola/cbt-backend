@@ -11,7 +11,7 @@ import {
   deleteUserSchema,
 } from "../validators/auth.validator.js";
 import { authorizeRoles } from "../middleware/role.middleware.js";
-import { authenticate } from "../middleware/auth.middleware.js";
+import { authenticate, checkDemoUser } from '../middleware/auth.middleware.js';
 
 const router = express.Router();
 
@@ -31,20 +31,22 @@ router.post("/logout", authenticate, auth.logout);
 // delete a user account
 
 router.delete(
-  "/delete-user/:userId",
+  '/delete-user/:userId',
   validateParams(deleteUserSchema),
   authenticate,
-  authorizeRoles("ADMIN"),
-  auth.deleteUser
+  authorizeRoles('ADMIN'),
+  checkDemoUser, // Middleware to check if the user is a demo user
+  auth.deleteUser,
 );
 
 // route for admin to change a user's password
 router.patch(
-  "/change-user-password/:userId",
+  '/change-user-password/:userId',
   authenticate,
   validateBody(updateUsersPasswordSchema),
-  authorizeRoles("ADMIN"),
-  auth.changeUsersPassword
+  authorizeRoles('ADMIN'),
+  checkDemoUser, // Middleware to check if the user is a demo user
+  auth.changeUsersPassword,
 );
 
 export default router;

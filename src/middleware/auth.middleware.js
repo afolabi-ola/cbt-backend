@@ -1,5 +1,5 @@
-import prisma from "../config/prisma.js";
-import { verifyToken } from "../utils/jwt.js";
+import prisma from '../config/prisma.js';
+import { verifyToken } from '../utils/jwt.js';
 
 export async function authenticate(req, res, next) {
   try {
@@ -9,21 +9,28 @@ export async function authenticate(req, res, next) {
     // If no token in cookies, check Authorization header (for downloads and other requests)
     if (!token && req.headers.authorization) {
       const authHeader = req.headers.authorization;
-      if (authHeader.startsWith("Bearer ")) {
+      if (authHeader.startsWith('Bearer ')) {
         token = authHeader.substring(7);
       }
     }
 
-    if (!token) return res.status(401).send("No token");
+    if (!token) return res.status(401).send('No token');
 
     const payload = verifyToken(token);
 
     const user = await prisma.user.findUnique({ where: { id: payload.id } });
-    if (!user) return res.status(401).send("User not found");
+    if (!user) return res.status(401).send('User not found');
     req.user = user;
 
     next();
   } catch (e) {
-    return res.status(401).send("Invalid token");
+    return res.status(401).send('Invalid token');
   }
 }
+
+export const checkDemoUser = (req, res, next) => {
+  if (req.user && req.user.isDemoUser) {
+    return res.status(403).json({ error: 'Action not allowed for demo users' });
+  }
+  next();
+};

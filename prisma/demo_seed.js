@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { curateDemoScenario } from './curate_demo_scenario.js';
 
 const prisma = new PrismaClient();
 
@@ -15,12 +16,14 @@ const DEMO_TEACHER_PASSWORD = 'Teacher@123';
 const DEMO_STUDENT_PASSWORD = 'Student@123';
 
 const CLASS_NAMES = [
+  'SS2 Science',
   'JSS1 Gold',
   'JSS2 Blue',
   'SS1 Science',
-  'SS2 Science',
   'SS3 Science',
 ];
+
+
 
 const COURSE_DEFINITIONS = [
   {
@@ -1612,7 +1615,10 @@ async function seedDemoData() {
       data: {
         firstname,
         lastname,
-        username: `demo_teacher_${String(i + 1).padStart(2, '0')}`,
+        username:
+          i === 0
+            ? 'demo_teacher'
+            : `demo_teacher_${String(i + 1).padStart(2, '0')}`,
         password: teacherPassword,
         role: 'TEACHER',
         isDemoUser: true,
@@ -1658,9 +1664,12 @@ async function seedDemoData() {
         data: {
           firstname,
           lastname,
-          username: `demo_student_${classIndex + 1}_${String(
-            studentIndex + 1,
-          ).padStart(2, '0')}`,
+          username:
+            classIndex === 0 && studentIndex === 0
+              ? 'demo_student'
+              : `demo_student_${classIndex + 1}_${String(
+                  studentIndex + 1,
+                ).padStart(2, '0')}`,
           password: studentPassword,
           role: 'STUDENT',
           classId: classes[classIndex].id,
@@ -2077,6 +2086,8 @@ These habits make reading useful in academic work and in everyday life.
     },
   });
 
+  await curateDemoScenario(prisma);
+
   console.log('');
   console.log('✅ Demo dataset created successfully.');
   console.log('');
@@ -2109,8 +2120,38 @@ These habits make reading useful in academic work and in everyday life.
 |--------------------------------------------------------------------------
 */
 
+async function connectWithRetry(retries = 3) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      console.log(
+        `🔌 Connecting to database (attempt ${attempt}/${retries})...`,
+      );
+
+      await prisma.$connect();
+
+      console.log('✅ Database connected.');
+
+      return;
+    } catch (error) {
+      console.error(`❌ Database connection failed on attempt ${attempt}.`);
+
+      if (attempt === retries) {
+        throw error;
+      }
+
+      const delay = attempt * 5000;
+
+      console.log(`⏳ Retrying in ${delay / 1000}s...`);
+
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 async function main() {
   try {
+    await connectWithRetry();
+    
     await resetDemoData();
     await seedDemoData();
 

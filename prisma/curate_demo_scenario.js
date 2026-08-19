@@ -142,7 +142,7 @@ export async function curateDemoScenario(prisma) {
   // Active: started 30 minutes ago and ends in 90 minutes
   const activeStart = new Date(now - 30 * 60 * 1000);
 
-  const activeEnd = new Date(now + 90 * 60 * 1000);
+  const activeEnd = new Date(Date.now() + 23 * 60 * 60 * 1000);
 
   // Past: ended 3 days ago
   const pastStart = new Date(now - 3 * 24 * 60 * 60 * 1000);

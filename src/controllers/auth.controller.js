@@ -120,17 +120,36 @@ export async function getSession(req, res) {
 }
 
 export async function getAllLoginSessions(req, res) {
-  const sessions = getAllLogins().map((login) => ({
-    username: login.username,
-    loginId: login.loginId,
-    device: login.device,
-    browser: login.browser,
-    ip: login.ip,
-    loginTime: login.loginTime,
-    lastActivity: login.lastActivity,
-  }));
+  const page = parseInt(req.query.page, 10) || 1;
+  const limit = parseInt(req.query.limit, 10) || 10;
+  const search = String(req.query.search || "").trim().toLowerCase();
+  const filteredSessions = getAllLogins()
+    .filter((login) =>
+      !search ||
+      [login.username, login.loginId, login.device, login.browser, login.ip]
+        .some((value) => String(value || "").toLowerCase().includes(search))
+    )
+    .map((login) => ({
+      username: login.username,
+      loginId: login.loginId,
+      device: login.device,
+      browser: login.browser,
+      ip: login.ip,
+      loginTime: login.loginTime,
+      lastActivity: login.lastActivity,
+    }));
+  const total = filteredSessions.length;
+  const sessions = filteredSessions.slice((page - 1) * limit, page * limit);
 
-  return res.json({ sessions });
+  return res.json({
+    sessions,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.ceil(total / limit),
+    },
+  });
 }
 
 export async function getLoginSessionByUsername(req, res) {

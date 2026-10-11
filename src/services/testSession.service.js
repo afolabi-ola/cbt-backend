@@ -652,6 +652,27 @@ export async function finishSession({ sessionId, studentId }) {
   }
 }
 
+export async function finishUserSession({ sessionId }) {
+  let session;
+  try {
+    session = await prisma.testSession.findUnique({
+      where: { id: sessionId },
+      select: { studentId: true },
+    });
+  } catch (error) {
+    throw Object.assign(new Error("Failed to finish session"), {
+      statusCode: 400,
+      details: error.message,
+    });
+  }
+
+  if (!session) {
+    throw Object.assign(new Error("Session not found"), { statusCode: 404 });
+  }
+
+  return finishSession({ sessionId, studentId: session.studentId });
+}
+
 export async function endAllSessions() {
   const inProgressSessions = await prisma.testSession.findMany({
     where: { status: "IN_PROGRESS", endedAt: null },

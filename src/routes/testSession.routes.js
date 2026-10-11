@@ -67,6 +67,15 @@ router.post(
   sessionController.finishTest
 );
 
+// finish a single user's session, for admin use
+router.post(
+  "/admin/:sessionId/finish",
+  authenticate,
+  authorizeRoles("ADMIN"),
+  validateParams(finishTestSessionSchema),
+  sessionController.finishUserTestSession
+);
+
 // end all sessions for all tests, used for cleanup (e.g., on server restart)
 router.post(
   "/end-all-sessions",

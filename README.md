@@ -194,6 +194,41 @@ Response:
 }
 ```
 
+### Active Login Sessions (Admin only)
+
+```http
+GET /api/auth/login-sessions?page=1&limit=10&search=chrome
+```
+
+Authentication is required. The optional `search` parameter performs a
+case-insensitive search across username, login ID, device, browser, and IP.
+`page` defaults to `1` and `limit` defaults to `10`. Search is optional; without
+it, all active sessions are returned, subject to pagination.
+
+Response:
+
+```json
+{
+  "sessions": [
+    {
+      "username": "student1",
+      "loginId": "session-id",
+      "device": "Desktop",
+      "browser": "Chrome",
+      "ip": "127.0.0.1",
+      "loginTime": "2026-10-11T10:00:00.000Z",
+      "lastActivity": "2026-10-11T10:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 1,
+    "pages": 1
+  }
+}
+```
+
 ### Admin change user password
 
 http
@@ -1582,6 +1617,34 @@ Response:
     "score": 85,
     "status": "SUBMITTED",
     "endedAt": "2025-10-30T11:00:00.000Z"
+  }
+}
+```
+
+#### End One User's Test Session (Admin only)
+
+```http
+POST /api/sessions/admin/:sessionId/finish
+```
+
+Authentication is required. `sessionId` must be a positive integer. This ends
+only the specified user's session and uses the same score calculation and
+completion behavior as the student finish endpoint.
+
+Response:
+
+```json
+{
+  "success": true,
+  "message": "User session finished",
+  "data": {
+    "id": 1,
+    "testId": 1,
+    "studentId": 1,
+    "status": "COMPLETED",
+    "startedAt": "2026-10-11T10:00:00.000Z",
+    "endedAt": "2026-10-11T11:00:00.000Z",
+    "type": "EXAM"
   }
 }
 ```

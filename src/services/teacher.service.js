@@ -33,6 +33,7 @@ export const getTeachers = async (user, options = {}) => {
       username: true,
       email: true,
       phoneNumber: true,
+      isActive:true,
       teacherOf: {
         select: {
           id: true,

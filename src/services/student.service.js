@@ -96,6 +96,7 @@ export const getStudents = async (user, options = {}) => {
         username: true,
         createdAt: true,
         profilePicture: true,
+        isActive: true,
         class: {
           include: {
             courses: {
@@ -140,6 +141,7 @@ export const getStudentByUsername = async (requester, username) => {
       lastname: true,
       username: true,
       profilePicture: true,
+      isActive:true,
       class: {
         include: { courses: true },
       },
@@ -195,6 +197,7 @@ export const assignStudentToClass = async (studentId, classId, requester) => {
         lastname: true,
         username: true,
         role: true,
+        isActive:true,
         class: {
           include: {
             teacher: {

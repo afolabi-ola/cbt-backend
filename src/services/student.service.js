@@ -30,6 +30,7 @@ export const getStudents = async (user, options = {}) => {
         email: true,
         phoneNumber: true,
         createdAt: true,
+        profilePicture: true,
         class: {
           include: { courses: true },
         },
@@ -94,6 +95,7 @@ export const getStudents = async (user, options = {}) => {
         lastname: true,
         username: true,
         createdAt: true,
+        profilePicture: true,
         class: {
           include: {
             courses: {
@@ -137,6 +139,7 @@ export const getStudentByUsername = async (requester, username) => {
       firstname: true,
       lastname: true,
       username: true,
+      profilePicture: true,
       class: {
         include: { courses: true },
       },

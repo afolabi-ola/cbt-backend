@@ -34,6 +34,7 @@ model User {
   username     String          @unique
   password     String
   role         Role            @default(STUDENT)
+  isActive     Boolean         @default(true)
   email        String?
   phoneNumber  String?
   profilePicture String?
@@ -230,4 +231,3 @@ enum SystemStatus {
   ACTIVE
   MAINTENANCE
 }
-

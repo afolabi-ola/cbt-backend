@@ -5,6 +5,7 @@ import {
   normalizeUsername,
   updateActivity,
   isLoginValid,
+  removeLogin,
 } from "../utils/loginManager.js";
 
 export async function authenticate(req, res, next) {
@@ -32,18 +33,26 @@ export async function authenticate(req, res, next) {
 
   try {
     const username = normalizeUsername(payload.username);
-    const activeLogin = getLogin(username);
+    const activeLogin = getLogin(username, payload.loginId);
     if (!activeLogin || !isLoginValid(username, payload.loginId)) {
       return res.status(401).json({ success: false, message: "Unauthorized" });
     }
 
     const user = await prisma.user.findUnique({ where: { id: payload.id } });
     if (!user) return res.status(401).json({ success: false, message: "User not found" });
+    if (!user.isActive) {
+      removeLogin(username, payload.loginId);
+      return res.status(403).json({
+        success: false,
+        code: "ACCOUNT_DISABLED",
+        message: "Your account has been disabled.",
+      });
+    }
 
     req.user = user;
     req.login = activeLogin;
     req.loginId = payload.loginId;
-    updateActivity(username);
+    updateActivity(username, payload.loginId);
 
     next();
   } catch (error) {

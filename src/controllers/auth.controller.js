@@ -72,6 +72,13 @@ export async function login(req, res, next) {
         login: err.login,
       });
     }
+    if (err.code === "ACCOUNT_DISABLED") {
+      return res.status(403).json({
+        success: false,
+        code: "ACCOUNT_DISABLED",
+        message: err.message,
+      });
+    }
 
     next(err);
   }
@@ -173,30 +180,28 @@ export async function getLoginSessionByUsername(req, res) {
 
 export async function forceLogoutUser(req, res) {
   const username = normalizeUsername(req.params.username);
-  const login = getLogin(username);
+  const logins = getAllLogins().filter((activeLogin) => activeLogin.username === username);
 
-  if (!login) {
+  if (logins.length === 0) {
     return res.status(404).json({ success: false, message: "No active login session found." });
   }
 
-  const socketId = login.socketId;
-  removeLogin(username, login.loginId);
-
-  if (socketId) {
+  for (const login of logins) {
+    removeLogin(username, login.loginId);
+    if (!login.socketId) continue;
     try {
       const io = getIo();
-      io.to(socketId).emit("force_logout", {
+      io.to(login.socketId).emit("force_logout", {
         reason: "Your login session was terminated by an administrator.",
       });
-    } catch (e) {
-      
-    }
+    } catch (e) {}
   }
 
   return res.json({
     success: true,
-    message: "User login session terminated.",
+    message: "User login sessions terminated.",
     username,
+    count: logins.length,
   });
 }
 
@@ -249,6 +254,40 @@ export async function deleteUser(req, res, next) {
     return success(
       res,
       `user ${data.user.username} deleted successfully`,
+      data
+    );
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function updateUserStatus(req, res, next) {
+  try {
+    const { userId } = req.params;
+    const { isActive } = req.body;
+    const data = await authService.updateUserStatus(
+      userId,
+      isActive,
+      req.user.id
+    );
+
+    if (!isActive) {
+      const username = normalizeUsername(data.user.username);
+      const logins = getAllLogins().filter(
+        (activeLogin) => activeLogin.username === username
+      );
+      removeLogin(username);
+      for (const login of logins) {
+        if (!login.socketId) continue;
+        getIo().to(login.socketId).emit("force_logout", {
+          reason: "Your account has been disabled by an administrator.",
+        });
+      }
+    }
+
+    return success(
+      res,
+      `User ${data.user.username} ${isActive ? "enabled" : "disabled"} successfully`,
       data
     );
   } catch (err) {

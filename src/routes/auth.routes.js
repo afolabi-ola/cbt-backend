@@ -10,6 +10,7 @@ import {
   loginSchema,
   updateUsersPasswordSchema,
   deleteUserSchema,
+  updateUserStatusSchema,
 } from "../validators/auth.validator.js";
 import { authorizeRoles } from "../middleware/role.middleware.js";
 import { authenticate } from "../middleware/auth.middleware.js";
@@ -38,6 +39,15 @@ router.delete(
   authenticate,
   authorizeRoles("ADMIN"),
   auth.deleteUser
+);
+
+router.patch(
+  "/users/:userId/status",
+  validateParams(deleteUserSchema),
+  validateBody(updateUserStatusSchema),
+  authenticate,
+  authorizeRoles("ADMIN"),
+  auth.updateUserStatus
 );
 
 // route for admin to change a user's password

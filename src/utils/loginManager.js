@@ -9,10 +9,13 @@ export function normalizeUsername(username) {
 }
 
 export function clearInactiveLogins(now = Date.now()) {
-  for (const [username, login] of activeLogins.entries()) {
-    if (now - Date.parse(login.lastActivity) >= inactiveLoginTtlMs) {
-      activeLogins.delete(username);
+  for (const [username, logins] of activeLogins.entries()) {
+    for (const [loginId, login] of logins.entries()) {
+      if (now - Date.parse(login.lastActivity) >= inactiveLoginTtlMs) {
+        logins.delete(loginId);
+      }
     }
+    if (logins.size === 0) activeLogins.delete(username);
   }
 }
 
@@ -59,6 +62,7 @@ function createLoginRecord({
   username,
   loginId,
   browserId,
+  role,
   device,
   browser,
   ip,
@@ -69,6 +73,7 @@ function createLoginRecord({
   return {
     username: normalizeUsername(username),
     loginId,
+    role,
     browserId: browserId ?? null,
     device: device ?? "Unknown",
     browser: browser ?? "Unknown",
@@ -79,20 +84,29 @@ function createLoginRecord({
   };
 }
 
-export function getLogin(username) {
+export function getLogin(username, loginId = null) {
   clearInactiveLogins();
-  return activeLogins.get(normalizeUsername(username));
+  const normalizedUsername = normalizeUsername(username);
+  const logins = activeLogins.get(normalizedUsername);
+  if (!logins) return null;
+  if (loginId) {
+    return logins.get(loginId) ?? null;
+  }
+  return logins.values().next().value ?? null;
 }
 
 export function getAllLogins() {
   clearInactiveLogins();
-  return Array.from(activeLogins.values());
+  return Array.from(activeLogins.values()).flatMap((logins) =>
+    Array.from(logins.values())
+  );
 }
 
 export function createLogin({
   username,
   loginId = crypto.randomUUID(),
   browserId,
+  role,
   device,
   browser,
   ip,
@@ -103,25 +117,29 @@ export function createLogin({
     username: key,
     loginId,
     browserId,
+    role,
     device,
     browser,
     ip,
     socketId,
   });
 
-  activeLogins.set(key, login);
+  let userLogins = activeLogins.get(key);
+  if (!userLogins) {
+    userLogins = new Map();
+    activeLogins.set(key, userLogins);
+  }
+  userLogins.set(login.loginId, login);
   return login;
 }
 
 export function isLoginValid(username, loginId) {
-  const activeLogin = getLogin(username);
-  if (!activeLogin) return false;
-  return activeLogin.loginId === loginId;
+  return !!getLogin(username, loginId);
 }
 
-export function updateActivity(username) {
+export function updateActivity(username, loginId = null) {
   clearInactiveLogins();
-  const activeLogin = getLogin(username);
+  const activeLogin = getLogin(username, loginId);
   if (!activeLogin) return null;
 
   activeLogin.lastActivity = new Date().toISOString();
@@ -129,19 +147,20 @@ export function updateActivity(username) {
 }
 
 export function attachSocket(username, loginId, socketId) {
-  const activeLogin = getLogin(username);
+  const activeLogin = getLogin(username, loginId);
   if (!activeLogin) return null;
-  if (activeLogin.loginId !== loginId) return null;
 
   activeLogin.socketId = socketId;
   return activeLogin;
 }
 
 export function detachSocket(socketId) {
-  for (const [username, activeLogin] of activeLogins.entries()) {
-    if (activeLogin?.socketId === socketId) {
-      activeLogin.socketId = null;
-      return { username, activeLogin };
+  for (const logins of activeLogins.values()) {
+    for (const activeLogin of logins.values()) {
+      if (activeLogin.socketId === socketId) {
+        activeLogin.socketId = null;
+        return { username: activeLogin.username, activeLogin };
+      }
     }
   }
 
@@ -149,14 +168,20 @@ export function detachSocket(socketId) {
 }
 
 export function removeLogin(username, loginId = null) {
-  const key = normalizeUsername(username);
-  const activeLogin = activeLogins.get(key);
+  const normalizedUsername = normalizeUsername(username);
+  const userLogins = activeLogins.get(normalizedUsername);
+  if (!userLogins) return null;
+  if (loginId) {
+    const activeLogin = getLogin(normalizedUsername, loginId);
+    if (!activeLogin) return null;
+    userLogins.delete(loginId);
+    if (userLogins.size === 0) activeLogins.delete(normalizedUsername);
+    return activeLogin;
+  }
 
-  if (!activeLogin) return null;
-  if (loginId && activeLogin.loginId !== loginId) return null;
-
-  activeLogins.delete(key);
-  return activeLogin;
+  const firstLogin = userLogins.values().next().value ?? null;
+  activeLogins.delete(normalizedUsername);
+  return firstLogin;
 }
 
 export function forceLogout(username) {

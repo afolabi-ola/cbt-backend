@@ -171,11 +171,15 @@ are held in memory, and records with no authenticated activity for five hours
 are removed. A cleanup sweep runs hourly; expired records are also removed when
 the login manager is accessed.
 
-Logging in as the same username from another browser profile is rejected while
-that username has an active login. When a different student successfully logs
-in using a browser profile with an active login for another username, the old
-username's in-memory login record is removed. Logging out clears the
-authentication cookie but leaves `cbt_browser_id` intact.
+Logging in as the same non-admin username from another browser profile is
+rejected while that username has an active login. Admin accounts can remain
+logged in from multiple browser profiles at the same time. Sessions are grouped
+by username, and the account role is checked to allow concurrent sessions only
+for admins. Logging out or authenticating one admin profile does not invalidate
+the others. When a different user successfully logs in using a browser profile
+with an active login for another username, the old username's in-memory login
+record is removed. Logging out clears the authentication cookie but leaves
+`cbt_browser_id` intact.
 
 Response:
 
@@ -279,6 +283,29 @@ DELETE /api/auth/delete-user/:userid
   "message": "User Seyi West deleted successfully"
 }
 ```
+
+### Admin enable or disable a user
+
+```http
+PATCH /api/auth/users/:userId/status
+```
+
+**Params**
+
+- `userId` (number, required)
+
+**Body**
+
+```json
+{
+  "isActive": false
+}
+```
+
+Set `isActive` to `true` to enable the account. Only administrators can update
+this status. Administrators cannot disable their own account. A disabled
+account cannot log in, and disabling a currently logged-in user revokes all of
+their active sessions.
 
 ### Dashboard
 
@@ -1835,6 +1862,7 @@ GET /api/students
       "lastname": "Sleek",
       "username": "sleek01",
       "email": "olatunde@example.com",
+      "profilePicture": "https://example.com/profile-picture.jpg",
       "class": {
         "id": 101,
         "name": "JSS1"
@@ -1875,6 +1903,7 @@ GET /api/students/:username
     "lastname": "Sleek",
     "username": "sleek01",
     "email": "olatunde@example.com",
+    "profilePicture": "https://example.com/profile-picture.jpg",
     "class": {
       "id": 101,
       "name": "JSS1"

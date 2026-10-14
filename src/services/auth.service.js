@@ -43,6 +43,7 @@ export async function register({
       username: user.username,
       role: user.role,
       classId: user.classId,
+      isActive: user.isActive,
     },
   };
 }
@@ -77,8 +78,19 @@ export async function login({
       throw error;
     }
 
+    if (!user.isActive) {
+      const error = new Error("Your account has been disabled.");
+      error.status = 403;
+      error.code = "ACCOUNT_DISABLED";
+      throw error;
+    }
+
     const existingLogin = getLogin(normalizedUsername);
-    if (existingLogin && existingLogin.browserId !== browserId) {
+    if (
+      user.role !== "ADMIN" &&
+      existingLogin &&
+      existingLogin.browserId !== browserId
+    ) {
       const error = new Error("You are already logged in on another system.");
       error.status = 409;
       error.code = "ALREADY_LOGGED_IN";
@@ -89,6 +101,9 @@ export async function login({
         loginTime: existingLogin.loginTime,
       };
       throw error;
+    }
+    if (existingLogin?.browserId === browserId) {
+      removeLogin(normalizedUsername, existingLogin.loginId);
     }
 
     for (const login of getAllLogins()) {
@@ -102,6 +117,7 @@ export async function login({
       username: user.username,
       loginId,
       browserId,
+      role: user.role,
       device,
       browser,
       ip,
@@ -121,6 +137,7 @@ export async function login({
         lastname: user.lastname,
         username: user.username,
         role: user.role,
+        isActive: user.isActive,
       },
       token,
     };
@@ -206,4 +223,45 @@ export async function deleteUser(currentUser, id) {
   } catch (error) {
     throw error;
   }
+}
+
+export async function updateUserStatus(id, isActive, currentUserId) {
+  const userId = parseInt(id, 10);
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      firstname: true,
+      lastname: true,
+      username: true,
+      role: true,
+    },
+  });
+
+  if (!user) {
+    const error = new Error("User not found");
+    error.status = 404;
+    throw error;
+  }
+
+  if (userId === currentUserId && !isActive) {
+    const error = new Error("You cannot disable your own admin account.");
+    error.status = 403;
+    throw error;
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: { isActive },
+    select: {
+      id: true,
+      firstname: true,
+      lastname: true,
+      username: true,
+      role: true,
+      isActive: true,
+    },
+  });
+
+  return { user: updatedUser };
 }

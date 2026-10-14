@@ -81,7 +81,7 @@ io.on("connection", (socket) => {
     try {
       const payload = verifyToken(authToken);
       const username = normalizeUsername(payload.username);
-      const login = getLogin(username);
+      const login = getLogin(username, payload.loginId);
 
       if (login && login.loginId === payload.loginId) {
         attachSocket(username, payload.loginId, socket.id);
@@ -93,7 +93,7 @@ io.on("connection", (socket) => {
     if (!username || !loginId) return;
 
     const normalizedUsername = normalizeUsername(username);
-    const activeLogin = getLogin(normalizedUsername);
+    const activeLogin = getLogin(normalizedUsername, loginId);
     if (activeLogin && activeLogin.loginId === loginId) {
       attachSocket(normalizedUsername, loginId, socket.id);
     }

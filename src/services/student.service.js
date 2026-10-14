@@ -31,6 +31,7 @@ export const getStudents = async (user, options = {}) => {
         phoneNumber: true,
         createdAt: true,
         profilePicture: true,
+        isActive:true,
         class: {
           include: { courses: true },
         },

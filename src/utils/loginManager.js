@@ -189,8 +189,17 @@ export function forceLogout(username) {
 }
 
 export function logoutAll() {
-  const sessions = getAllLogins();
-  activeLogins.clear();
+  const sessions = [];
+
+  for (const [username, logins] of activeLogins.entries()) {
+    for (const [loginId, login] of logins.entries()) {
+      if (String(login.role ?? "").trim().toUpperCase() === "ADMIN") continue;
+      sessions.push(login);
+      logins.delete(loginId);
+    }
+    if (logins.size === 0) activeLogins.delete(username);
+  }
+
   return sessions;
 }
 

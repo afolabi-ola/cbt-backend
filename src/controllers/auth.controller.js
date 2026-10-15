@@ -206,12 +206,10 @@ export async function forceLogoutUser(req, res) {
 }
 
 export async function logoutAllUsers(req, res) {
-  const sessions = getAllLogins();
+  const sessions = logoutAll();
   const socketIds = sessions
     .map((session) => session.socketId)
     .filter(Boolean);
-
-  logoutAll();
 
   for (const socketId of socketIds) {
     try {
@@ -219,7 +217,7 @@ export async function logoutAllUsers(req, res) {
       io.to(socketId).emit("force_logout", {
         reason: "Your login session was terminated by an administrator.",
       });
-    } catch (e) {}
+    } catch (e) {console.error(`Failed to notify socket ${socketId}:`, e);}
   }
 
   return res.json({

@@ -267,6 +267,7 @@ export const fetchDashboardData = async (role, userId) => {
       // Build student dashboard
       dashboardData = {
         studentName: `${student.firstname} ${student.lastname}`,
+        profilePicture: student.profilePicture,
         className: student.class.className,
         totalTests: await prisma.test.count({
           where: { course: { classes: { some: { id: classId } } } },

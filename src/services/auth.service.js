@@ -1,6 +1,16 @@
+import crypto from "crypto";
 import prisma from "../config/prisma.js";
 import bcrypt from "bcryptjs";
 import { signToken } from "../utils/jwt.js";
+import {
+  createLogin,
+  detectBrowser,
+  detectDevice,
+  getLogin,
+  getAllLogins,
+  normalizeUsername,
+  removeLogin,
+} from "../utils/loginManager.js";
 
 export async function register({
   firstname,
@@ -33,13 +43,27 @@ export async function register({
       username: user.username,
       role: user.role,
       classId: user.classId,
+      isActive: user.isActive,
     },
   };
 }
-export async function login({ username, password }) {
+export async function login({
+  username,
+  password,
+  browserId,
+  requestInfo = {},
+}) {
   try {
-    username = username.toLowerCase();
-    const user = await prisma.user.findUnique({ where: { username } });
+    const normalizedUsername = normalizeUsername(username);
+    const userAgent = requestInfo.userAgent || "";
+    const browser = detectBrowser(userAgent);
+    const device = detectDevice(userAgent);
+    const ip = requestInfo.ip || "unknown";
+
+    // console.log(`Login attempt: username=${normalizedUsername}, device=${device}, browser=${browser}, ip=${ip}`
+    // );
+
+    const user = await prisma.user.findUnique({ where: { username: normalizedUsername } });
     if (!user) {
       const error = new Error("unable to login");
       error.status = 401;
@@ -53,11 +77,59 @@ export async function login({ username, password }) {
       error.status = 401;
       throw error;
     }
+
+    if (!user.isActive) {
+      const error = new Error("Your account has been disabled.");
+      error.status = 403;
+      error.code = "ACCOUNT_DISABLED";
+      throw error;
+    }
+
+    const existingLogin = getLogin(normalizedUsername);
+    if (
+      user.role !== "ADMIN" &&
+      existingLogin &&
+      existingLogin.browserId !== browserId
+    ) {
+      const error = new Error("You are already logged in on another system.");
+      error.status = 409;
+      error.code = "ALREADY_LOGGED_IN";
+      error.login = {
+        device: existingLogin.device,
+        browser: existingLogin.browser,
+        ip: existingLogin.ip,
+        loginTime: existingLogin.loginTime,
+      };
+      throw error;
+    }
+    if (existingLogin?.browserId === browserId) {
+      removeLogin(normalizedUsername, existingLogin.loginId);
+    }
+
+    for (const login of getAllLogins()) {
+      if (login.username !== normalizedUsername && login.browserId === browserId) {
+        removeLogin(login.username, login.loginId);
+      }
+    }
+
+    const loginId = crypto.randomUUID();
+    const activeLogin = createLogin({
+      username: user.username,
+      loginId,
+      browserId,
+      role: user.role,
+      device,
+      browser,
+      ip,
+    });
+
     const token = signToken({
       id: user.id,
       role: user.role,
       username: user.username,
+      loginId,
     });
+
     return {
       user: {
         id: user.id,
@@ -65,6 +137,7 @@ export async function login({ username, password }) {
         lastname: user.lastname,
         username: user.username,
         role: user.role,
+        isActive: user.isActive,
       },
       token,
     };
@@ -150,4 +223,45 @@ export async function deleteUser(currentUser, id) {
   } catch (error) {
     throw error;
   }
+}
+
+export async function updateUserStatus(id, isActive, currentUserId) {
+  const userId = parseInt(id, 10);
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      firstname: true,
+      lastname: true,
+      username: true,
+      role: true,
+    },
+  });
+
+  if (!user) {
+    const error = new Error("User not found");
+    error.status = 404;
+    throw error;
+  }
+
+  if (userId === currentUserId && !isActive) {
+    const error = new Error("You cannot disable your own admin account.");
+    error.status = 403;
+    throw error;
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id: userId },
+    data: { isActive },
+    select: {
+      id: true,
+      firstname: true,
+      lastname: true,
+      username: true,
+      role: true,
+      isActive: true,
+    },
+  });
+
+  return { user: updatedUser };
 }

@@ -16,7 +16,7 @@ export const registerSchema = Joi.object({
 export const loginSchema = Joi.object({
   username: Joi.string().required(),
   password: Joi.string().required(),
-});
+}).unknown(false);
 
 export const updateUsersPasswordSchema = Joi.object({
   newPassword: Joi.string().min(6).required(),
@@ -28,4 +28,8 @@ export const updateUsersPasswordSchema = Joi.object({
 
 export const deleteUserSchema = Joi.object({
   userId: Joi.number().min(1).required(),
+});
+
+export const updateUserStatusSchema = Joi.object({
+  isActive: Joi.boolean().required().strict(),
 });

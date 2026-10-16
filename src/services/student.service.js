@@ -5,13 +5,23 @@ export const getStudents = async (user, options = {}) => {
   const limit = options.limit || 10;
   const sort = options.sort || "createdAt";
   const order = options.order || "desc";
+  const search = options.search?.trim();
 
   const skip = (page - 1) * limit;
+  const searchFilter = search
+    ? {
+        OR: [
+          { firstname: { contains: search, mode: "insensitive" } },
+          { lastname: { contains: search, mode: "insensitive" } },
+          { username: { contains: search, mode: "insensitive" } },
+        ],
+      }
+    : {};
 
   if (user.role === "ADMIN") {
     // Return all students with their class and courses
     const students = await prisma.user.findMany({
-      where: { role: "STUDENT" },
+      where: { role: "STUDENT", ...searchFilter },
       select: {
         id: true,
         firstname: true,
@@ -20,6 +30,8 @@ export const getStudents = async (user, options = {}) => {
         email: true,
         phoneNumber: true,
         createdAt: true,
+        profilePicture: true,
+        isActive:true,
         class: {
           include: { courses: true },
         },
@@ -32,7 +44,7 @@ export const getStudents = async (user, options = {}) => {
     });
 
     const total = await prisma.user.count({
-      where: { role: "STUDENT" },
+      where: { role: "STUDENT", ...searchFilter },
     });
 
     return {
@@ -58,8 +70,7 @@ export const getStudents = async (user, options = {}) => {
     // Return students who are either:
     // 1. In a class taught by this teacher, OR
     // 2. Taking at least one course taught by this teacher
-    const students = await prisma.user.findMany({
-      where: {
+    const where = {
         role: "STUDENT",
         OR: [
           {
@@ -75,13 +86,18 @@ export const getStudents = async (user, options = {}) => {
             },
           },
         ],
-      },
+        ...searchFilter,
+      };
+    const students = await prisma.user.findMany({
+      where,
       select: {
         id: true,
         firstname: true,
         lastname: true,
         username: true,
         createdAt: true,
+        profilePicture: true,
+        isActive: true,
         class: {
           include: {
             courses: {
@@ -100,23 +116,7 @@ export const getStudents = async (user, options = {}) => {
     });
 
     const total = await prisma.user.count({
-      where: {
-        role: "STUDENT",
-        OR: [
-          {
-            class: { teacherId: user.id },
-          },
-          {
-            class: {
-              courses: {
-                some: {
-                  id: { in: teacherCourseIds },
-                },
-              },
-            },
-          },
-        ],
-      },
+      where,
     });
 
     return {
@@ -141,6 +141,8 @@ export const getStudentByUsername = async (requester, username) => {
       firstname: true,
       lastname: true,
       username: true,
+      profilePicture: true,
+      isActive:true,
       class: {
         include: { courses: true },
       },
@@ -196,6 +198,7 @@ export const assignStudentToClass = async (studentId, classId, requester) => {
         lastname: true,
         username: true,
         role: true,
+        isActive:true,
         class: {
           include: {
             teacher: {

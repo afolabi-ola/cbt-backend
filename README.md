@@ -87,6 +87,13 @@ A robust backend system for managing computer-based tests, built with Express.js
    npx prisma migrate dev --name init
    ```
 
+   For an existing development database, apply pending migrations (including
+   the `profilePicture` field migration) with:
+
+   ```bash
+   npx prisma migrate dev
+   ```
+
 5. Start the server:
    ```bash
    npm start
@@ -153,6 +160,27 @@ Request body:
 }
 ```
 
+The backend issues a persistent, HTTP-only `cbt_browser_id` cookie and uses it
+for concurrent-login checks. Clients must not send a browser ID; when the cookie
+is missing or invalid, the backend generates one and sets it after a successful
+login. The cookie is refreshed on successful login without changing a valid ID
+and has a one-year lifetime.
+
+The JWT and `reqtoken` cookie both expire after five hours. Active login records
+are held in memory, and records with no authenticated activity for five hours
+are removed. A cleanup sweep runs hourly; expired records are also removed when
+the login manager is accessed.
+
+Logging in as the same non-admin username from another browser profile is
+rejected while that username has an active login. Admin accounts can remain
+logged in from multiple browser profiles at the same time. Sessions are grouped
+by username, and the account role is checked to allow concurrent sessions only
+for admins. Logging out or authenticating one admin profile does not invalidate
+the others. When a different user successfully logs in using a browser profile
+with an active login for another username, the old username's in-memory login
+record is removed. Logging out clears the authentication cookie but leaves
+`cbt_browser_id` intact.
+
 Response:
 
 ```json
@@ -166,6 +194,41 @@ Response:
       "role": "TEACHER"
     },
     "token": "eyJhbGciOiJIUzI1NiIs..."
+  }
+}
+```
+
+### Active Login Sessions (Admin only)
+
+```http
+GET /api/auth/login-sessions?page=1&limit=10&search=chrome
+```
+
+Authentication is required. The optional `search` parameter performs a
+case-insensitive search across username, login ID, device, browser, and IP.
+`page` defaults to `1` and `limit` defaults to `10`. Search is optional; without
+it, all active sessions are returned, subject to pagination.
+
+Response:
+
+```json
+{
+  "sessions": [
+    {
+      "username": "student1",
+      "loginId": "session-id",
+      "device": "Desktop",
+      "browser": "Chrome",
+      "ip": "127.0.0.1",
+      "loginTime": "2026-10-11T10:00:00.000Z",
+      "lastActivity": "2026-10-11T10:00:00.000Z"
+    }
+  ],
+  "pagination": {
+    "page": 1,
+    "limit": 10,
+    "total": 1,
+    "pages": 1
   }
 }
 ```
@@ -221,6 +284,29 @@ DELETE /api/auth/delete-user/:userid
 }
 ```
 
+### Admin enable or disable a user
+
+```http
+PATCH /api/auth/users/:userId/status
+```
+
+**Params**
+
+- `userId` (number, required)
+
+**Body**
+
+```json
+{
+  "isActive": false
+}
+```
+
+Set `isActive` to `true` to enable the account. Only administrators can update
+this status. Administrators cannot disable their own account. A disabled
+account cannot log in, and disabling a currently logged-in user revokes all of
+their active sessions.
+
 ### Dashboard
 
 #### fetch dashboard details
@@ -274,13 +360,14 @@ Response:
 #### Get All Classes
 
 \`\`\`http
-GET /api/classes
+GET /api/class
 \`\`\`
 
 **Query Parameters:**
 
 - `page` (integer, optional) - Page number for pagination. Default: `1`
 - `limit` (integer, optional) - Number of records per page. Default: `10`
+- `search` (string, optional) - Search by class name or teacher first/last name.
 - `sort` (string, optional) - Field to sort by. Default: `createdAt`
 - `order` (string, optional) - Sort order: `asc` or `desc`. Default: `desc`
 
@@ -316,7 +403,7 @@ Response:
 #### Update Class (Admin only)
 
 \`\`\`http
-PATCH /api/classes/:classId
+PATCH /api/class/:classId
 \`\`\`
 
 Request body:
@@ -345,7 +432,7 @@ Response:
 #### Delete Class (Admin only)
 
 \`\`\`http
-DELETE /api/classes/:classId
+DELETE /api/class/:classId
 \`\`\`
 
 Response:
@@ -371,6 +458,7 @@ Fetch all teachers in the system. Accessible only by users with the ADMIN role.
 
 - `page` (integer, optional) - Page number for pagination. Default: `1`
 - `limit` (integer, optional) - Number of records per page. Default: `10`
+- `search` (string, optional) - Search by teacher first name, last name, or username.
 - `sort` (string, optional) - Field to sort by. Default: `createdAt`
 - `order` (string, optional) - Sort order: `asc` or `desc`. Default: `desc`
 
@@ -536,6 +624,7 @@ GET /api/courses
 
 - `page` (integer, optional) - Page number for pagination. Default: `1`
 - `limit` (integer, optional) - Number of records per page. Default: `10`
+- `search` (string, optional) - Search by course title or teacher first/last name.
 - `sort` (string, optional) - Field to sort by. Default: `createdAt`
 - `order` (string, optional) - Sort order: `asc` or `desc`. Default: `desc`
 
@@ -734,6 +823,7 @@ GET /api/tests
 
 - `page` (integer, optional) - Page number for pagination. Default: `1`
 - `limit` (integer, optional) - Number of records per page. Default: `10`
+- `search` (string, optional) - Search by test title or course title.
 - `sort` (string, optional) - Field to sort by. Default: `createdAt`
 - `order` (string, optional) - Sort order: `asc` or `desc`. Default: `desc`
 
@@ -1032,6 +1122,12 @@ POST /api/question-banks/:bankId/images
 |-------|--------|-------------|
 | bankImages | file[] | Image files to upload (max 10) |
 | description | string | Optional description for all images |
+
+In production, uploaded images are stored in Cloudinary under
+`cbt/questionbankimages/{bankId}`. For example, images for bank `25` are stored
+under `cbt/questionbankimages/25`. Both new uploads and image replacements use
+this folder structure. In development, images continue to be saved locally in
+`uploads/question-banks`.
 
 **Response**
 
@@ -1428,16 +1524,10 @@ text,options,answer,marks
 #### Start Test Session
 
 ```http
-POST /api/sessions
+POST /api/sessions/start/:testId
 ```
 
-Request body:
-
-```json
-{
-  "testId": 1
-}
-```
+No request body is required. The test ID is supplied in the URL.
 
 Response:
 
@@ -1457,15 +1547,68 @@ Response:
 #### Submit Answer
 
 ```http
-POST /api/sessions/:sessionId/answers
+POST /api/sessions/:sessionId/questions/:questionId/submit
 ```
 
 Request body:
 
 ```json
 {
-  "questionId": 1,
-  "selectedOption": "1"
+  "sessionId": 1,
+  "answers": [
+    {
+      "questionId": 2,
+      "selectedOption": "1"
+    }
+  ]
+}
+```
+
+#### Fetch Session Questions
+
+```http
+GET /api/sessions/:sessionId/questions/:questionNumber
+```
+
+Fetch questions beginning at the requested number for the authenticated student.
+
+#### Submit Answer and Get Next Question
+
+```http
+POST /api/sessions/questions-next/answer
+```
+
+Request body:
+
+```json
+{
+  "sessionId": 1,
+  "answers": [
+    {
+      "questionId": 2,
+      "selectedOption": "1"
+    }
+  ]
+}
+```
+
+#### Submit Answer and Get Previous Question
+
+```http
+POST /api/sessions/questions-previous/answer
+```
+
+Request body:
+
+```json
+{
+  "sessionId": 1,
+  "answers": [
+    {
+      "questionId": 2,
+      "selectedOption": "1"
+    }
+  ]
 }
 ```
 
@@ -1487,7 +1630,7 @@ Response:
 #### End Test Session
 
 ```http
-POST /api/sessions/:sessionId/submit
+POST /api/sessions/:sessionId/finish
 ```
 
 Response:
@@ -1501,6 +1644,34 @@ Response:
     "score": 85,
     "status": "SUBMITTED",
     "endedAt": "2025-10-30T11:00:00.000Z"
+  }
+}
+```
+
+#### End One User's Test Session (Admin only)
+
+```http
+POST /api/sessions/admin/:sessionId/finish
+```
+
+Authentication is required. `sessionId` must be a positive integer. This ends
+only the specified user's session and uses the same score calculation and
+completion behavior as the student finish endpoint.
+
+Response:
+
+```json
+{
+  "success": true,
+  "message": "User session finished",
+  "data": {
+    "id": 1,
+    "testId": 1,
+    "studentId": 1,
+    "status": "COMPLETED",
+    "startedAt": "2026-10-11T10:00:00.000Z",
+    "endedAt": "2026-10-11T11:00:00.000Z",
+    "type": "EXAM"
   }
 }
 ```
@@ -1546,6 +1717,7 @@ GET /api/profile
     "username": "johnny",
     "email": "john@example.com",
     "phoneNumber": "387878343",
+    "profilePicture": "https://res.cloudinary.com/.../image/upload/...",
     "role": "student"
   }
 }
@@ -1598,17 +1770,17 @@ PATCH /api/profile/admin/:userId
 
 - `userId` (integer, required) - ID of user to update
 
-**Request Body** (at least one field required)
+**Request** (multipart/form-data; profile fields and/or a profile picture)
 
-```json
-{
-  "firstname": "Jane",
-  "lastname": "Doe",
-  "username": "janedoe",
-  "email": "jane@example.com",
-  "phoneNumber": "09012345678"
-}
-```
+Text fields are optional: `firstname`, `lastname`, `username`, `email`, and
+`phoneNumber`. To upload a profile picture, include the image file using the
+field name `profilePicture`. An image upload can be sent without any text
+fields. The existing upload middleware limits images to 5 MB.
+
+In production, the uploaded profile picture is stored in Cloudinary under
+`cbt/profile-pictures` with a per-user public ID. Outside production, the file
+is stored in the local `uploads` directory. The returned user profile includes
+the `profilePicture` URL.
 
 **Response**
 
@@ -1623,6 +1795,7 @@ PATCH /api/profile/admin/:userId
     "username": "janedoe",
     "email": "jane@example.com",
     "phoneNumber": "09012345678",
+    "profilePicture": "https://res.cloudinary.com/.../image/upload/...",
     "role": "STUDENT"
   }
 }
@@ -1672,6 +1845,7 @@ GET /api/students
 
 - `page` (integer, optional) - Page number for pagination. Default: `1`
 - `limit` (integer, optional) - Number of records per page. Default: `10`
+- `search` (string, optional) - Search by student first name, last name, or username.
 - `sort` (string, optional) - Field to sort by. Default: `createdAt`
 - `order` (string, optional) - Sort order: `asc` or `desc`. Default: `desc`
 
@@ -1688,6 +1862,7 @@ GET /api/students
       "lastname": "Sleek",
       "username": "sleek01",
       "email": "olatunde@example.com",
+      "profilePicture": "https://example.com/profile-picture.jpg",
       "class": {
         "id": 101,
         "name": "JSS1"
@@ -1728,6 +1903,7 @@ GET /api/students/:username
     "lastname": "Sleek",
     "username": "sleek01",
     "email": "olatunde@example.com",
+    "profilePicture": "https://example.com/profile-picture.jpg",
     "class": {
       "id": 101,
       "name": "JSS1"
@@ -2148,6 +2324,25 @@ Retrieve aggregated and detailed results for a student across their courses with
 - The response includes pagination metadata for managing large result sets
 - Students can only see results for tests in courses they are enrolled in
 - Test scores and status may be hidden (show as "unreleased") depending on test settings
+
+## Release Test Results (Admin only)
+
+```http
+PATCH /api/results/test/:testId/release
+```
+
+Toggle whether students can view results for a test.
+
+**Request body:**
+
+```json
+{
+  "showResult": true
+}
+```
+
+**Auth:** Required (Bearer token)
+**Roles:** ADMIN only
 
 ## Create Notification
 

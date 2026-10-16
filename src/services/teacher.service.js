@@ -9,11 +9,23 @@ export const getTeachers = async (user, options = {}) => {
   const limit = options.limit || 10;
   const sort = options.sort || "createdAt";
   const order = options.order || "desc";
+  const search = options.search?.trim();
 
   const skip = (page - 1) * limit;
 
+  const where = {
+    role: "TEACHER",
+    ...(search && {
+      OR: [
+        { firstname: { contains: search, mode: "insensitive" } },
+        { lastname: { contains: search, mode: "insensitive" } },
+        { username: { contains: search, mode: "insensitive" } },
+      ],
+    }),
+  };
+
   const teachers = await prisma.user.findMany({
-    where: { role: "TEACHER" },
+    where,
     select: {
       id: true,
       firstname: true,
@@ -21,6 +33,8 @@ export const getTeachers = async (user, options = {}) => {
       username: true,
       email: true,
       phoneNumber: true,
+      profilePicture: true,
+      isActive:true,
       teacherOf: {
         select: {
           id: true,
@@ -43,7 +57,7 @@ export const getTeachers = async (user, options = {}) => {
   });
 
   const total = await prisma.user.count({
-    where: { role: "TEACHER" },
+    where,
   });
 
   return {

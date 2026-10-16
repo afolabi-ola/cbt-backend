@@ -313,8 +313,7 @@ export const updateTest = async (testId, data, user) => {
     0
   );
 
-  console.log("passmark" ,data.passMark);
-  console.log("totalObatainableMarks" ,totalObatainableMarks);
+
   
 
   if (data.passMark > totalObatainableMarks) {
@@ -351,12 +350,22 @@ export const getTests = async (user, options = {}) => {
   const limit = options.limit || 10;
   const sort = options.sort || "createdAt";
   const order = options.order || "desc";
+  const search = options.search?.trim();
 
   const skip = (page - 1) * limit;
+  const searchFilter = search
+    ? {
+        OR: [
+          { title: { contains: search, mode: "insensitive" } },
+          { course: { title: { contains: search, mode: "insensitive" } } },
+        ],
+      }
+    : {};
 
   switch (user.role) {
     case "ADMIN": {
       const allTest = await prisma.test.findMany({
+        where: searchFilter,
         include: {
           teacher: {
             select: {
@@ -395,7 +404,7 @@ export const getTests = async (user, options = {}) => {
         },
       });
 
-      const total = await prisma.test.count();
+      const total = await prisma.test.count({ where: searchFilter });
 
       const data = allTest.map((test) => {
         const { teacher, ...safeTest } = test;
@@ -418,10 +427,9 @@ export const getTests = async (user, options = {}) => {
     }
 
     case "TEACHER": {
+      const where = { createdBy: user.id, ...searchFilter };
       const tests = await prisma.test.findMany({
-        where: {
-          createdBy: user.id,
-        },
+        where,
         include: {
           course: {
             select: {
@@ -462,9 +470,7 @@ export const getTests = async (user, options = {}) => {
       });
 
       const total = await prisma.test.count({
-        where: {
-          createdBy: user.id,
-        },
+        where,
       });
 
       return {
@@ -498,6 +504,7 @@ export const getTests = async (user, options = {}) => {
           endTime: {
             gt: new Date(), // Only tests where endTime is in the future
           },
+          ...searchFilter,
         },
         include: {
           teacher: {
@@ -551,6 +558,7 @@ export const getTests = async (user, options = {}) => {
           endTime: {
             gt: new Date(), // Only count tests where endTime is in the future
           },
+          ...searchFilter,
         },
       });
 

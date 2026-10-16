@@ -1,30 +1,66 @@
 import prisma from '../config/prisma.js';
 import { verifyToken } from '../utils/jwt.js';
+import {
+  getLogin,
+  normalizeUsername,
+  updateActivity,
+  isLoginValid,
+  removeLogin,
+} from '../utils/loginManager.js';
 
 export async function authenticate(req, res, next) {
-  try {
-    // Check for token in cookies first
-    let token = req.cookies.reqtoken;
+  let token = req.cookies?.reqtoken;
 
-    // If no token in cookies, check Authorization header (for downloads and other requests)
-    if (!token && req.headers.authorization) {
-      const authHeader = req.headers.authorization;
-      if (authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7);
-      }
+  if (!token && req.headers.authorization) {
+    const authHeader = req.headers.authorization;
+    if (authHeader.startsWith('Bearer ')) {
+      token = authHeader.substring(7);
+    }
+  }
+
+  if (!token)
+    return res.status(401).json({ success: false, message: 'No token' });
+
+  let payload;
+  try {
+    payload = verifyToken(token);
+  } catch {
+    return res.status(401).json({ success: false, message: 'Invalid token' });
+  }
+
+  if (!payload?.username || !payload?.loginId) {
+    return res.status(401).json({ success: false, message: 'Invalid token' });
+  }
+
+  try {
+    const username = normalizeUsername(payload.username);
+    const activeLogin = getLogin(username, payload.loginId);
+    if (!activeLogin || !isLoginValid(username, payload.loginId)) {
+      return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
-    if (!token) return res.status(401).send('No token');
-
-    const payload = verifyToken(token);
-
     const user = await prisma.user.findUnique({ where: { id: payload.id } });
-    if (!user) return res.status(401).send('User not found');
+    if (!user)
+      return res
+        .status(401)
+        .json({ success: false, message: 'User not found' });
+    if (!user.isActive) {
+      removeLogin(username, payload.loginId);
+      return res.status(403).json({
+        success: false,
+        code: 'ACCOUNT_DISABLED',
+        message: 'Your account has been disabled.',
+      });
+    }
+
     req.user = user;
+    req.login = activeLogin;
+    req.loginId = payload.loginId;
+    updateActivity(username, payload.loginId);
 
     next();
-  } catch (e) {
-    return res.status(401).send('Invalid token');
+  } catch (error) {
+    next(error);
   }
 }
 

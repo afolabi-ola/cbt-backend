@@ -119,6 +119,16 @@ export async function finishTest(req, res, next) {
   }
 }
 
+export async function finishUserTestSession(req, res, next) {
+  try {
+    const sessionId = parseInt(req.params.sessionId);
+    const updated = await sessionService.finishUserSession({ sessionId });
+    return success(res, "User session finished", updated);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function endAllSessions(req, res, next) {
   try {
     await sessionService.endAllSessions();

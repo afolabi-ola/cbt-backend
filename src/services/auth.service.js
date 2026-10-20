@@ -1,8 +1,10 @@
 import crypto from "crypto";
 import prisma from "../config/prisma.js";
 import bcrypt from "bcryptjs";
-import { signToken } from "../utils/jwt.js";
+import { signToken, verifyToken } from "../utils/jwt.js";
+import { getIo } from "../utils/socket.js";
 import {
+  attachSocket,
   createLogin,
   detectBrowser,
   detectDevice,
@@ -144,6 +146,32 @@ export async function login({
   } catch (error) {
     throw error;
   }
+}
+
+export function authenticateSocket(socketId) {
+  const socket = getIo().sockets.sockets.get(socketId);
+  if (!socket) throw new Error("Socket connection not found");
+
+  const cookieHeader = socket.request.headers.cookie || "";
+  const tokenCookie = cookieHeader
+    .split(";")
+    .map((cookie) => cookie.trim())
+    .find((cookie) => cookie.startsWith("reqtoken="));
+  const token = tokenCookie?.slice("reqtoken=".length);
+  if (!token) return null;
+
+  const payload = verifyToken(token);
+  if (!payload?.username || !payload?.loginId) {
+    throw new Error("Invalid login token");
+  }
+
+  const username = normalizeUsername(payload.username);
+  const activeLogin = getLogin(username, payload.loginId);
+  if (!activeLogin || activeLogin.loginId !== payload.loginId) {
+    throw new Error("No active login session");
+  }
+
+  return attachSocket(username, payload.loginId, socket.id);
 }
 
 export async function changeUserPassword(id, newPassword) {

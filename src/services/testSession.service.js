@@ -663,7 +663,7 @@ export async function finishUserSession({ sessionId }) {
   try {
     session = await prisma.testSession.findUnique({
       where: { id: sessionId },
-      select: { studentId: true },
+      select: { id: true },
     });
   } catch (error) {
     throw Object.assign(new Error("Failed to finish session"), {

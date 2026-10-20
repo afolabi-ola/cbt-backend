@@ -171,7 +171,31 @@ export function authenticateSocket(socketId) {
     throw new Error("No active login session");
   }
 
-  return attachSocket(username, payload.loginId, socket.id);
+  const attachedLogin = attachSocket(username, payload.loginId, socket.id);
+  if (!attachedLogin) return null;
+
+  const adminSocketIds = getAllLogins()
+    .filter(
+      (login) =>
+        String(login.role ?? "").trim().toUpperCase() === "ADMIN" &&
+        login.socketId,
+    )
+    .map((login) => login.socketId);
+
+  for (const adminSocketId of adminSocketIds) {
+    try {
+      getIo()
+        .to(adminSocketId)
+        .emit("login_session_connected", { username: attachedLogin.username });
+    } catch (error) {
+      console.error(
+        `Failed to notify admin socket ${adminSocketId} about a new login:`,
+        error,
+      );
+    }
+  }
+
+  return attachedLogin;
 }
 
 export async function changeUserPassword(id, newPassword) {

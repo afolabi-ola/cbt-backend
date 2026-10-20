@@ -14,6 +14,7 @@ A robust backend system for managing computer-based tests, built with Express.js
 - [API Documentation](#api-documentation)
   - [Complete API Routes](#complete-api-routes)
   - [Authentication](#authentication)
+  - [Socket.IO Events](#socketio-events)
   - [Dashboard](#dashboard)
   - [Classes](#classes)
   - [Courses](#courses)
@@ -230,6 +231,38 @@ Response:
     "total": 1,
     "pages": 1
   }
+}
+```
+
+### Socket.IO Events
+
+Socket.IO connections are associated with an active login by reading the
+HTTP-only `reqtoken` cookie from the connection request. The client does not
+need to send a username or login ID in an authentication event. Connect or
+reconnect after login so the request includes the latest cookie. For a
+cross-origin frontend, configure the Socket.IO client to send credentials.
+
+#### `login_session_connected`
+
+When a socket is attached to an active login, connected admin sockets receive:
+
+```json
+{
+  "username": "student1"
+}
+```
+
+The event is a notification only; the frontend can refresh the session table
+using `GET /api/auth/login-sessions`.
+
+#### `authentication_error`
+
+If the connection includes an invalid token or a token without a matching
+active login, the socket receives:
+
+```json
+{
+  "message": "Invalid or expired login session."
 }
 ```
 
@@ -1655,8 +1688,9 @@ POST /api/sessions/admin/:sessionId/finish
 ```
 
 Authentication is required. `sessionId` must be a positive integer. This ends
-only the specified user's session and uses the same score calculation and
-completion behavior as the student finish endpoint.
+only the specified user's session. The score is calculated using the marks for
+each correctly answered question. The session's socket room receives a `time_up`
+event with reason `admin_ended_session`.
 
 Response:
 
@@ -1682,6 +1716,11 @@ Response:
 POST /api/sessions/end-all-sessions
 ```
 
+Ends all sessions currently in progress. Each ended session's socket room
+receives a `time_up` event with reason `admin_ended_session`. If one or more
+sessions fail to end, the service logs the failures and returns an error after
+attempting the remaining sessions.
+
 Response:
 
 ```json
@@ -1691,6 +1730,23 @@ Response:
   "data": null
 }
 ```
+
+#### `time_up` Socket.IO event
+
+Timer expiration and admin-initiated session endings emit `time_up` to the
+corresponding `session_<sessionId>` room, not to every connected socket:
+
+```json
+{
+  "sessionId": 1,
+  "score": 85,
+  "reason": "admin_ended_session"
+}
+```
+
+Clients should join their test room with the `join_session` event and the
+session ID, then listen for `time_up`. Timer-based reasons include `duration`
+and `endTime`.
 
 #### Profile
 

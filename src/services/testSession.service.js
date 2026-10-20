@@ -7,40 +7,43 @@ import { seededShuffle } from "../utils/seededShuffle.js";
 const sessionTimers = new Map();
 
 export async function endSessionByTimer(sessionId, reason = "duration") {
+  const timers = sessionTimers.get(sessionId);
+  if (timers) {
+    clearTimeout(timers.timeout);
+    clearInterval(timers.interval);
+    sessionTimers.delete(sessionId);
+  }
+
+  const session = await prisma.testSession.findUnique({
+    where: { id: sessionId },
+    include: { answers: { include: { question: true } }, test: true },
+  });
+
+  if (!session || session.endedAt || session.status === "COMPLETED") return null;
+
+  const score = session.answers.reduce(
+    (total, answer) =>
+      total + (answer.isCorrect ? answer.question.marks || 0 : 0),
+    0,
+  );
+
+  const updatedSession = await prisma.testSession.update({
+    where: { id: sessionId },
+    data: { endedAt: new Date(), status: "COMPLETED", score },
+  });
+
   try {
-    const timers = sessionTimers.get(sessionId);
-    if (timers) {
-      clearTimeout(timers.timeout);
-      clearInterval(timers.interval);
-      sessionTimers.delete(sessionId);
-    }
-
-    const session = await prisma.testSession.findUnique({
-      where: { id: sessionId },
-      include: { answers: { include: { question: true } }, test: true },
+    const io = getIo();
+    io.to(`session_${sessionId}`).emit("time_up", {
+      sessionId,
+      score,
+      reason,
     });
+  } catch (error) {
+    console.error(`Failed to emit time_up for session ${sessionId}:`, error);
+  }
 
-    if (!session || session.endedAt || session.status === "COMPLETED") return;
-
-    const score = session.answers.reduce(
-      (total, answer) => total + (answer.isCorrect ? 1 : 0),
-      0,
-    );
-
-    await prisma.testSession.update({
-      where: { id: sessionId },
-      data: { endedAt: new Date(), status: "COMPLETED", score },
-    });
-
-    try {
-      const io = getIo();
-      io.to(`session_${sessionId}`).emit("time_up", {
-        sessionId,
-        score,
-        reason,
-      });
-    } catch {}
-  } catch (e) {}
+  return updatedSession;
 }
 
 export async function startSession({ studentId, testId }) {
@@ -169,11 +172,14 @@ export async function startSession({ studentId, testId }) {
       if (timeoutMs > 0 && timeoutMs !== Infinity) {
         const io = getIo();
         const timeout = setTimeout(
-          () =>
+          () => {
             endSessionByTimer(
               session.id,
               timeoutMs === endTimeMs ? "endTime" : "duration",
-            ),
+            ).catch((error) => {
+              console.error(`Failed to end timed session ${session.id}:`, error);
+            });
+          },
           timeoutMs,
         );
         const interval = setInterval(() => {
@@ -670,7 +676,7 @@ export async function finishUserSession({ sessionId }) {
     throw Object.assign(new Error("Session not found"), { statusCode: 404 });
   }
 
-  return finishSession({ sessionId, studentId: session.studentId });
+  return await endSessionByTimer(session.id, "admin_ended_session");
 }
 
 export async function endAllSessions() {
@@ -678,7 +684,28 @@ export async function endAllSessions() {
     where: { status: "IN_PROGRESS", endedAt: null },
     select: { id: true },
   });
+  const failedSessionIds = [];
+  let endedCount = 0;
+
   for (const session of inProgressSessions) {
-    await endSessionByTimer(session.id, "admin_end");
+    try {
+      const endedSession = await endSessionByTimer(
+        session.id,
+        "admin_ended_session",
+      );
+      if (endedSession) endedCount += 1;
+    } catch (error) {
+      console.error(`Failed to end session ${session.id}:`, error);
+      failedSessionIds.push(session.id);
+    }
   }
+
+  if (failedSessionIds.length > 0) {
+    throw Object.assign(
+      new Error(`Failed to end sessions: ${failedSessionIds.join(", ")}`),
+      { statusCode: 500, failedSessionIds },
+    );
+  }
+
+  return { endedCount };
 }

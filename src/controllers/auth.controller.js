@@ -147,6 +147,7 @@ export async function getAllLoginSessions(req, res) {
       ip: login.ip,
       loginTime: login.loginTime,
       lastActivity: login.lastActivity,
+      socketId: login.socketId,
     }));
   const total = filteredSessions.length;
   const sessions = filteredSessions.slice((page - 1) * limit, page * limit);
@@ -178,6 +179,7 @@ export async function getLoginSessionByUsername(req, res) {
     ip: login.ip,
     loginTime: login.loginTime,
     lastActivity: login.lastActivity,
+    socketId: login.socketId,
   });
 }
 
